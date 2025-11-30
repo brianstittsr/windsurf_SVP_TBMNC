@@ -1,0 +1,36 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isManager() {
+      return isAuthenticated() && 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager'];
+    }
+    
+    // Customer documents
+    match /documents/{customerId}/{documentId} {
+      // Allow authenticated users to read
+      allow read: if isAuthenticated();
+      
+      // Allow managers to upload/update/delete
+      allow write: if isManager();
+      
+      // Validate file size (max 10MB) and types
+      allow write: if request.resource.size < 10 * 1024 * 1024 &&
+                      request.resource.contentType.matches('application/pdf|image/.*|application/msword|application/vnd.openxmlformats-officedocument.*');
+    }
+    
+    // User profile images
+    match /profiles/{userId}/{imageId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId &&
+                      request.resource.size < 2 * 1024 * 1024 &&
+                      request.resource.contentType.matches('image/.*');
+    }
+  }
+}
