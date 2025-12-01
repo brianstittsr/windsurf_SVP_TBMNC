@@ -2,26 +2,59 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper functions
+    // ========================================
+    // Helper Functions
+    // ========================================
+    
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    function isAdmin() {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
     
-    function isManager() {
-      return isAuthenticated() && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager'];
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+    
+    function isAffiliate() {
+      return isAuthenticated() && getUserData().role == 'affiliate';
+    }
+    
+    function isSupplier() {
+      return isAuthenticated() && getUserData().role == 'supplier';
+    }
+    
+    function isViewer() {
+      return isAuthenticated() && getUserData().role == 'viewer';
+    }
+    
+    function isAdminOrAffiliate() {
+      return isAdmin() || isAffiliate();
     }
     
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
-    // Users collection
+    function isSupplierOwner(supplierId) {
+      return isSupplier() && getUserData().supplierId == supplierId;
+    }
+    
+    function isAffiliateOwner(affiliateId) {
+      return isAffiliate() && getUserData().affiliateId == affiliateId;
+    }
+    
+    function isAssignedToSupplier(supplierId) {
+      return isAffiliate() && 
+             get(/databases/$(database)/documents/suppliers/$(supplierId)).data.assignedAffiliates.hasAny([getUserData().affiliateId]);
+    }
+    
+    // ========================================
+    // Users Collection
+    // ========================================
+    
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isOwner(userId);
@@ -29,38 +62,115 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
-    // Customers collection
+    // ========================================
+    // Suppliers Collection (Enhanced V2)
+    // ========================================
+    
+    match /suppliers/{supplierId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || 
+                      isAssignedToSupplier(supplierId) ||
+                      isSupplierOwner(supplierId);
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Affiliates Collection
+    // ========================================
+    
+    match /affiliates/{affiliateId} {
+      allow read: if isAuthenticated();
+      allow create: if true; // Allow registration
+      allow update: if isAdmin() || isAffiliateOwner(affiliateId);
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Deliverables Collection
+    // ========================================
+    
+    match /deliverables/{deliverableId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdminOrAffiliate();
+      allow update: if isAdminOrAffiliate() ||
+                      (isSupplier() && isSupplierOwner(resource.data.supplierId));
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Assignments Collection
+    // ========================================
+    
+    match /assignments/{assignmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin() ||
+                      (isAffiliate() && isAffiliateOwner(resource.data.affiliateId));
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Alerts Collection
+    // ========================================
+    
+    match /alerts/{alertId} {
+      allow read: if isAuthenticated() && 
+                    (isAdmin() || 
+                     resource.data.recipients.hasAny([request.auth.uid]));
+      allow create: if isAdminOrAffiliate();
+      allow update: if isAdmin() ||
+                      resource.data.recipients.hasAny([request.auth.uid]);
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Legacy Customers Collection (V1)
+    // ========================================
+    
     match /customers/{customerId} {
       allow read: if isAuthenticated();
-      allow create: if isManager();
-      allow update: if isManager();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
       
       // Subcollection: qualification stages
       match /qualificationStages/{stageId} {
         allow read: if isAuthenticated();
-        allow write: if isManager();
+        allow write: if isAdmin();
       }
       
       // Subcollection: documents
       match /documents/{documentId} {
         allow read: if isAuthenticated();
-        allow create: if isManager();
-        allow update: if isManager();
-        allow delete: if isManager();
+        allow create: if isAdmin();
+        allow update: if isAdmin();
+        allow delete: if isAdmin();
       }
       
       // Subcollection: communications
       match /communications/{commId} {
         allow read: if isAuthenticated();
-        allow create: if isManager();
-        allow update: if isManager();
+        allow create: if isAdmin();
+        allow update: if isAdmin();
         allow delete: if isAdmin();
       }
     }
     
-    // Analytics collection (read-only, server-side updates)
+    // ========================================
+    // Analytics Collection (Server-side only)
+    // ========================================
+    
     match /analytics/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only server can write
+    }
+    
+    // ========================================
+    // AI Analysis Results (Server-side only)
+    // ========================================
+    
+    match /aiAnalysis/{analysisId} {
       allow read: if isAuthenticated();
       allow write: if false; // Only server can write
     }
