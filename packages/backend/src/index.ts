@@ -5,10 +5,10 @@ import compression from 'compression';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
-import { AppDataSource } from './database/data-source';
+import { initializeFirebase } from './firebase/config';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './utils/logger';
-import routes from './routes';
+import routes from './routes/index-firebase';
 
 // Load environment variables from project root
 dotenv.config({ path: path.resolve(__dirname, '../../..', '.env') });
@@ -39,18 +39,19 @@ app.use('/api/v1', routes);
 // Error handling
 app.use(errorHandler);
 
-// Initialize database and start server
+// Initialize Firebase and start server
 const startServer = async () => {
   try {
-    // Initialize database connection
-    await AppDataSource.initialize();
-    logger.info('Database connection established');
+    // Initialize Firebase
+    initializeFirebase();
+    logger.info('Firebase initialized successfully');
 
     // Start server
     app.listen(PORT, () => {
       logger.info(`🚀 TBMNC Tracker API running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`Health check: http://localhost:${PORT}/health`);
+      logger.info(`Firebase Emulator Mode: ${process.env.FIREBASE_EMULATOR === 'true'}`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
@@ -59,15 +60,13 @@ const startServer = async () => {
 };
 
 // Handle graceful shutdown
-process.on('SIGTERM', async () => {
+process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully...');
-  await AppDataSource.destroy();
   process.exit(0);
 });
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   logger.info('SIGINT received, shutting down gracefully...');
-  await AppDataSource.destroy();
   process.exit(0);
 });
 

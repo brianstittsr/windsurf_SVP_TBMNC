@@ -19,7 +19,7 @@ let db: Firestore;
 let auth: Auth;
 let storage: FirebaseStorage;
 
-export const initializeFirebase = () => {
+export const initializeFirebase = async () => {
   if (app) {
     return { app, db, auth, storage };
   }
@@ -51,8 +51,15 @@ export const initializeFirebase = () => {
   }
 };
 
-// Export initialized instances
-export { app, db, auth, storage };
+// Initialize immediately (async)
+initializeFirebase().then(() => {
+  console.log('Firebase ready');
+});
 
-// Initialize on import
-initializeFirebase();
+// Export getter functions for safe access
+export const getDb = () => db;
+export const getAuthInstance = () => auth;
+export const getStorageInstance = () => storage;
+
+// Export initialized instances (will be undefined until initialized)
+export { app, db, auth, storage };
